@@ -26,6 +26,11 @@ def storage(directory):
 
 
 async def run(args):
+    if args.command == "simulate":
+        from .simulation import simulate
+        result = await simulate(args.scenario, args.data_dir)
+        emit(result)
+        return 2 if result["runtime"]["blocked"] else 0
     if args.command == "replay":
         result = (await replay_stream(load_stream(args.scenario), duration=args.duration,
                                       stop_delay=args.stop_delay) if args.timed else
@@ -112,6 +117,9 @@ async def run(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="机器人认知内核 V0，仅模拟执行")
     sub = parser.add_subparsers(dest="command", required=True)
+    simulation = sub.add_parser("simulate", help="在本机运行多模块认知仿真场景")
+    simulation.add_argument("scenario")
+    simulation.add_argument("--data-dir", help="持久化模块状态及模拟动作回执")
     execute = sub.add_parser("run", help="文本输入到模拟动作")
     execute.add_argument("text", nargs="+", help="输入文本，按一批受理后排序")
     execute.add_argument("--data-dir", help="持久化目录，默认内存")

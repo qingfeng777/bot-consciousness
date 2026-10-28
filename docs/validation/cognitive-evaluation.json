@@ -1,0 +1,29 @@
+{
+  "version": "0.3.0",
+  "simulation": true,
+  "python": "3.10.12",
+  "platform": "Linux-6.8.0-57-generic-x86_64-with-glibc2.35",
+  "scenario": "examples/cognitive.jsonl",
+  "scenario_sha256": "3db5d295206c82ff826d3864d122a42772853e0a1e3ef931db50dce4c2eb0806",
+  "source_sha256": "3b4ac553d88a2364621687e6472c6318a57b4118a5cc4bec4e4c8deb399745e8",
+  "runs": 100,
+  "scenario_events": 4000,
+  "completed_actions": 300,
+  "restarts": 100,
+  "max_external_concurrency": 1,
+  "distinct_outcome_hashes": 1,
+  "outcome_sha256": "cb052ed309db61f5beadb73deda84058e7a9a37fa64ee96b449fa6751719cf49",
+  "elapsed_seconds": 22.61495639999339,
+  "checks": {
+    "observable_goals_satisfied": true,
+    "restart_without_repeated_effect": true,
+    "deterministic_outcome": true,
+    "serial_execution": true
+  },
+  "limitations": [
+    "fixed annotated fixtures, not learned perception",
+    "offline model candidate fixture",
+    "same scenario repeated, not independent research validation",
+    "not a 72-hour soak"
+  ]
+}

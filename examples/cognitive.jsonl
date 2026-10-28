@@ -1,0 +1,40 @@
+{"at": 0, "op": "input", "id": "hello", "text": "小智，开始本机仿真"}
+{"at": 1, "op": "observe", "eid": "e", "modality": "text", "content": "杯子在桌上"}
+{"at": 2, "op": "observe", "eid": "e2", "modality": "image", "content": "labelled-image-001", "annotation": "杯子在架子上"}
+{"at": 3, "op": "observe", "eid": "audio1", "modality": "audio", "content": "labelled-audio-001", "annotation": "请核对杯子位置"}
+{"at": 4, "op": "observe", "eid": "video1", "modality": "video", "content": "labelled-video-001", "annotation": "有人进入房间"}
+{"at": 5, "op": "scene", "eid": "scene1", "location": "room", "sensor": "camera1", "track": "person1", "label": "用户"}
+{"at": 6, "op": "claim", "cid": "desk", "entity": "cup", "attribute": "location", "value": "desk", "evidence": ["e"]}
+{"at": 7, "op": "claim", "cid": "shelf", "entity": "cup", "attribute": "location", "value": "shelf", "evidence": ["e2"]}
+{"at": 8, "op": "observe", "eid": "verification", "modality": "text", "content": "复核：杯子确实在桌上"}
+{"at": 9, "op": "resolve", "case_id": "1", "winner": "desk", "evidence": ["verification"], "reason": "显式复核观察"}
+{"at": 10, "op": "goal", "gid": "g", "predicate": {"entity": "robot", "attribute": "done", "value": true}, "budget": 3}
+{"at": 11, "op": "telemetry", "eid": "battery1", "metric": "battery", "value": 15, "unit": "%", "ttl": 100}
+{"at": 12, "op": "role", "role": "helper", "style": "concise", "version": 1}
+{"at": 13, "op": "affect", "eid": "alarm-emotion", "kind": "emergency"}
+{"at": 14, "op": "model", "candidate": {"goal": "g", "evidence": ["e"], "steps": [{"id": "s1", "capability": "say", "arguments": {"text": "正在核对杯子位置。"}, "after": []}]}, "generation": 1}
+{"at": 15, "op": "skill", "sid": "check", "version": 1, "plan": {"goal": "g", "evidence": ["e"], "steps": [{"id": "s1", "capability": "say", "arguments": {"text": "正在核对杯子位置。"}, "after": []}]}}
+{"at": 16, "op": "run_skill", "key": "check:1", "run_id": "run1"}
+{"at": 17, "op": "observe", "eid": "done-observation", "modality": "text", "content": "用户确认检查完成"}
+{"at": 18, "op": "claim", "cid": "done", "entity": "robot", "attribute": "done", "value": true, "evidence": ["done-observation"]}
+{"at": 19, "op": "evaluate"}
+{"at": 20, "op": "affect", "eid": "success-emotion", "kind": "success"}
+{"at": 21, "op": "reflex", "rid": "fire", "trigger": "fire", "response": "模拟告警：请核实火情", "cooldown": 5}
+{"at": 22, "op": "react", "eid": "fire1", "text": "fire", "entity": "room"}
+{"at": 23, "op": "react", "eid": "fire2", "text": "fire", "entity": "room"}
+{"at": 24, "op": "associate", "seed": "e", "questions": ["杯子是否仍在桌上？"], "generation": 1}
+{"at": 25, "op": "observe", "eid": "train-e0", "modality": "text", "content": "独立会话 0 的结果"}
+{"at": 26, "op": "experience", "eid": "x0", "session": "session0", "evidence": ["train-e0"], "success": true}
+{"at": 27, "op": "observe", "eid": "train-e1", "modality": "text", "content": "独立会话 1 的结果"}
+{"at": 28, "op": "experience", "eid": "x1", "session": "session1", "evidence": ["train-e1"], "success": true}
+{"at": 29, "op": "observe", "eid": "train-e2", "modality": "text", "content": "独立会话 2 的结果"}
+{"at": 30, "op": "experience", "eid": "x2", "session": "session2", "evidence": ["train-e2"], "success": true}
+{"at": 31, "op": "observe", "eid": "train-e3", "modality": "text", "content": "独立会话 3 的结果"}
+{"at": 32, "op": "experience", "eid": "x3", "session": "session3", "evidence": ["train-e3"], "success": false}
+{"at": 33, "op": "learn", "cid": "check-pattern", "plan": {"goal": "g", "evidence": ["e"], "steps": [{"id": "s1", "capability": "say", "arguments": {"text": "正在核对杯子位置。"}, "after": []}]}, "training": ["x0"]}
+{"at": 34, "op": "validate_learning", "cid": "check-pattern", "validation": ["x1", "x2"], "outcomes": [true, true], "baseline": [true, false]}
+{"at": 35, "op": "publish_learning", "cid": "check-pattern", "configured": true}
+{"at": 36, "op": "telemetry", "eid": "battery2", "metric": "battery", "value": 35, "unit": "%", "ttl": 100}
+{"at": 37, "op": "observe", "eid": "charged-observation", "modality": "text", "content": "充电已达到目标范围"}
+{"at": 38, "op": "claim", "cid": "charged", "entity": "robot", "attribute": "charged", "value": true, "evidence": ["charged-observation"]}
+{"at": 39, "op": "evaluate"}

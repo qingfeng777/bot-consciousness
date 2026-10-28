@@ -20,3 +20,5 @@ jobs:
           python -m consciousness run '小智，你好' '火警'
           python -m consciousness replay examples/basic.jsonl
           python -m consciousness replay examples/preemption.jsonl --timed --stop-delay 0.1
+          python -m consciousness simulate examples/cognitive.jsonl --data-dir local-data/ci
+          python -m consciousness simulate examples/cognitive.jsonl --data-dir local-data/ci

@@ -5,7 +5,7 @@ from dataclasses import asdict
 
 from .attention import Attention
 from .clock import RealClock
-from .domain import Result, Signal, Status, StopReceipt, TERMINAL, new_id, positive_number
+from .domain import Decision, InvalidInput, Result, Signal, Status, StopReceipt, TERMINAL, canonical, new_id, positive_number
 from .memory import Item, WorkingMemory
 
 
@@ -100,11 +100,29 @@ class Runtime:
             self._kick()
 
     async def submit(self, signal: Signal):
+        return await self._submit(signal, self.attention.select(signal))
+
+    async def submit_action(self, capability, arguments, *, event_id):
+        """Accept a validated simulation command through the same serial slot.
+
+        Intended for configured goals/skills, not raw model output. The full
+        command is fingerprinted so retrying an ID cannot change its effect.
+        """
+        if capability not in {"say", "alert"} or not isinstance(arguments, dict) or set(arguments) != {"text"}:
+            raise InvalidInput("unsupported simulated command")
+        text = arguments["text"]
+        if not isinstance(text, str) or not text.strip() or len(text.encode()) > 12000:
+            raise InvalidInput("invalid command text")
+        signal = Signal(canonical({"capability": capability, "arguments": arguments}),
+                        event_id=event_id, robot_id=self.journal.robot_id)
+        return await self._submit(signal, Decision(0 if capability == "alert" else 2, 50,
+                                                   capability, dict(arguments), "validated_plan"))
+
+    async def _submit(self, signal, decision):
         if not self._started or self._closed:
             raise RuntimeError("start runtime before submitting; closed runtime rejects new work")
         if self._fatal is not None:
             raise RuntimeError("runtime is faulted") from self._fatal
-        decision = self.attention.select(signal)
         task, accepted = self.journal.accept(signal, decision, self.max_pending)
         if accepted:
             self.memory.add(Item(signal.event_id, "observation", signal.text))

@@ -1,13 +1,15 @@
-# 内核版本 0.2 接口与不变量
+# 内核版本 0.3 接口与不变量
 
 本文件描述实际实现的契约，与 [全量系统设计](system-contracts.md) 区分。当前实现覆盖 M01、M03、M04、M08、M14、M20 的首批内核子产物，不意味着这些模块全范围完成。
+
+0.3 新增的认知模块契约见 [本机认知仿真](cognitive-simulation.md)。Runtime.submit_action 接受配置目标/技能生成的受限模拟命令，校验 say / alert 与 text 参数后使用相同的单槽位、抢占和恢复通道。幂等指纹绑定完整能力和参数，不能用相同事件 ID 更换动作。
 
 ## 核心对象
 
 | 对象 | 实现字段 | 校验或所有权 |
 | --- | --- | --- |
 | Signal | text、event_id、trace_id、source、schema_version、robot_id、occurred_at、deadline_at | 消息版本仍为 1.0；文本非空且不超过 16 KiB；source 为 user 或 sensor；可选时间为有限非负 Unix 秒 |
-| Decision | priority、salience、capability、arguments、reason | 由 Attention 内部生成，不从外部文本反序列化执行 |
+| Decision | priority、salience、capability、arguments、reason | 由 Attention 或通过校验的 submit_action 生成，不从原始模型文本直接执行 |
 | Action | id、task_id、generation、epoch、capability、arguments、idempotency_key、trace_id | Journal 占用槽位时生成，先 prepared 再 sending |
 | Result | action_id、generation、epoch、status、evidence、detail | 必须匹配原动作，status 为 completed、cancelled 或 failed，证据非空 |
 | StopReceipt | action_id、generation、epoch、stopped、evidence | 原动作匹配、stopped 为真且有证据；仅收到请求不构成停止 |

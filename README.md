@@ -30,17 +30,19 @@
 
 ## 当前实现与运行
 
-已开始按研发计划实现，当前版本 0.2.0 提供文本输入、规则注意力、持久事件日志、串行模拟执行、中断确认及恢复核对，并支持数据库升级、容量预算、备份、任务老化与截止时间、带时间回放。所有动作均为模拟，不连接真实模型或机器人。
+已开始按研发计划实现，当前版本 0.3.0 提供文本输入、规则注意力、持久事件日志、串行模拟执行、中断确认及恢复核对，并支持数据库升级、容量预算、备份、任务老化与截止时间、带时间回放。新增 20 模块本机仿真基线，覆盖长期记忆、冲突、目标、自我状态、情绪、规划、技能及学习候选流程。所有动作均为模拟，不连接真实模型或机器人；完整研究验收仍在推进。
 
 ```sh
 python3 -m consciousness run '小智，你好' '火警'
 python3 -m consciousness replay examples/basic.jsonl
 python3 -m consciousness replay examples/preemption.jsonl --timed --stop-delay 0.1
+python3 -m consciousness simulate examples/cognitive.jsonl --data-dir local-data/demo-cognition
 python3 -m unittest discover -s tests -v
 ```
 
 需要 Python 3.10 以上及支持 POSIX 文件锁的系统，运行时无第三方依赖。
 
+- [20 模块本机仿真及实现范围](docs/cognitive-simulation.md)
 - [运行与恢复说明](docs/runtime-guide.md)
 - [实际内核接口](docs/runtime-contracts.md)
 - [研发进度与验收记录](docs/progress.md)
