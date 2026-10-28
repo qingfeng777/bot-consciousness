@@ -1,4 +1,4 @@
-# 本机认知模块仿真 0.3.0
+# 本机认知模块仿真 0.4.0
 
 本版将 20 个设计模块接入同一个确定性仿真基线。新增模块具有实际状态转换、持久化和异常路径测试；这不是 20 个完整研发工作包的最终验收。图像/音频/视频使用人工标注样本，模型使用离线候选提供器，外部动作仍只有模拟 say / alert。
 
@@ -10,6 +10,7 @@
 python3 -m consciousness simulate examples/cognitive.jsonl --data-dir local-data/cognitive-v03
 python3 -m consciousness simulate examples/cognitive.jsonl --data-dir local-data/cognitive-v03
 python3 -m consciousness inspect --data-dir local-data/cognitive-v03
+python3 -m consciousness simulate examples/calendar-skills.jsonl --data-dir local-data/calendar-v04-demo
 python3 -m consciousness backup --data-dir local-data/cognitive-v03 local-data/cognitive-backup-001
 python3 -m consciousness.evaluation --runs 100 --output cognitive-evaluation.json
 python3 -m unittest discover -s tests -v
@@ -33,9 +34,9 @@ python3 -m unittest discover -s tests -v
 | M02 知觉 | Perception；UTF-8 文本、媒体校验和、标注适配、质量/partial 隔离 | 真实 ASR、视觉推理、视频采样与跨模态融合 |
 | M03 注意力 | Attention；精确紧急词、点名、排序、抢占 | 信息组、迟滞和分层识别评估 |
 | M04 工作记忆 | WorkingMemory；有界快照与固定约束 | token 配额、模型摘要及摘要撤回 |
-| M05 长期记忆 | Knowledge；来源、有效区间、结构/子串检索、撤证、持久化 | 专用全文/向量索引、排序评估、删除传播工具 |
+| M05 长期记忆 | Knowledge；来源、有效区间、结构/子串检索、FTS5 排序、索引落后回退、撤证、持久化 | 向量索引、排序评估、删除传播工具 |
 | M06 场景 | Scene；地点边界、设备轨迹隔离、晚到历史记录 | 实体合并/拆分、自动重识别、完整关系图 |
-| M07 目标 | Goals；显式条件、无环依赖、截止时间、动作预算、证据撤回重评 | 周期日历、时区补跑、父子预算与自然语言澄清 |
+| M07 目标 | Goals；显式条件、无环依赖、截止时间、动作预算、证据撤回重评、每日时区日历与重启补跑 | 周/月日历规则、父子预算与自然语言澄清 |
 | M08 调度 | Runtime；单槽位、老化、截止时间、中断确认、未知冻结 | 计算池、复杂技能并行控制 |
 | M09 自我状态 | SelfState；单位/范围/质量、TTL、低电量迟滞 | 设备校时、趋势估计、真实能耗校准 |
 | M10 情绪 | Affect；快慢衰减、饱和、标签迟滞、事件撤销重算 | 表达盲评、长时参数研究；未声称具有真实情感 |
@@ -44,7 +45,7 @@ python3 -m unittest discover -s tests -v
 | M13 规划 | ModelGateway；异步调用、持久调用预算、超时、代次、JSON/能力/证据校验 | 真实供应商、调用成本、语义前置条件、反馈重规划 |
 | M14 执行 | SimulatedDriver；持久幂等回执、停止及恢复核对 | 运动/设备控制与真实输出 |
 | M15 学习 | Learning；经验含失败、候选、训练/验证来源隔离、报告、发布/退役 | 自动候选挖掘、独立扰动/消融实验和泛化 |
-| M16 技能 | Skills；不可变版本、顺序 DAG 校验、检查点、恢复不重放、撤证阻断 | 分支、子技能、补偿、完整条件语言 |
+| M16 技能 | Skills；不可变版本、顺序 DAG 校验、事实前置条件、when 分支、检查点、恢复不重放、撤证阻断 | 子技能、补偿、复杂条件语言与有界重试 |
 | M17 反射 | Reflexes；精确匹配、不应期、实体隔离、互斥冲突、调度提交 | 复合时间窗口、规则版本回滚和学习规则实验 |
 | M18 反矛盾 | Knowledge；重叠区间互斥、单位规范化、显式裁决、冲突重开、派生失效 | 开放文本矛盾、复杂实体修订与验证目标自动生成 |
 | M19 联想 | Association；真实证据种子、去重、最多 5 项、代次、假设独立存储 | 自动候选生成、验证目标路由和效用研究 |
@@ -58,7 +59,7 @@ StateStore 在同一个 SQLite 日志内创建 module_state 扩展表（独立 s
 
 事实有效区间为 `[start, end)`，end=null 表示无上界。只有同实体、同属性、同上下文、同单位且时间重叠的不同值构成结构冲突；支持 cm→m 归一。裁决只在争议时间交集内隐藏被否决项，不抹掉其他时期的历史。派生事实有效区间不得超出任一前提；撤回证据、否决前提或重开争议会使下游结论待复核。
 
-证据 ID 是内容身份，重复导入不同内容会拒绝。来源 group 用于识别同一原始观察的转述，不把它们算作独立训练/验证来源。检索直接读取结构状态，没有异步索引，因此当前 stale_index=false；这不代表向量检索已经实现。
+证据 ID 是内容身份，重复导入不同内容会拒绝。来源 group 用于识别同一原始观察的转述，不把它们算作独立训练/验证来源。search 直接读取结构状态；ranked 使用可重建 FTS5/BM25 索引，再按原始事实检查有效时间与冲突。任何知识修订使旧索引标为 stale，查询回退到子串匹配且返回 stale_index=true。未实现向量检索。FTS5 基线限 1,000 条事实，中文分词尚未调优；回退语义与词项检索不同，不承诺等价召回。
 
 ## 目标、技能与恢复规则
 
@@ -68,6 +69,10 @@ StateStore 在同一个 SQLite 日志内创建 module_state 扩展表（独立 s
 
 计划 schema 限制 1–8 步，步骤必须按依赖拓扑顺序提交，只能引用 say / alert，参数仅 text。模型不能通过返回代码、未知能力、伪造来源、超量步骤或旧代次候选来执行动作。角色和情绪不会修改 P0 优先级或扩大执行能力。
 
+计划和步骤可包含 requires 条件列表，每项为 entity / attribute / value。每个未执行步骤都重新读取当前有效事实；未知、过期或争议条件阻断运行。步骤 when 为显式条件分支：确定为假时记录 skipped，不消耗动作预算；未知不会被当成假。恢复保持已提交分支和效果，不重放已经完成的步骤。
+
+Calendar 支持每日本地时刻和 IANA 时区。夏令时不存在的时刻跳过，重复时刻由 fold=0/1 选一次。重启补跑策略为 skip（只保留 60 秒内到期项）、run_once（最新一次）、bounded_catchup（最近 1–10 次）。每日 occurrence 使用稳定键和独立目标实体，上一轮证据不能直接满足下一轮。tick 由上层事件循环调用，不创建无限后台线程；扫描上限十年。
+
 ## 学习和多模态的实际含义
 
 学习例子的 outcomes / baseline 是配置输入的实验结果，当前模块检查报告、来源隔离及发布资格，不自行推理这些布尔结果的真实性，也没有训练神经网络。至少两个独立验证会话、无来源组重叠、全部成功且不差于基线，才进入 validated；这只是保守的演示准入，不是统计泛化结论。发布需显式 configured=true。撤回训练或验证证据后，已发布技能的新步骤被阻断。
@@ -76,9 +81,11 @@ StateStore 在同一个 SQLite 日志内创建 module_state 扩展表（独立 s
 
 ## 后续验收顺序
 
-1. 保持本机回归入口，逐项关闭上表缺口；优先目标周期调度、技能条件/分支、场景关系及检索索引。
+1. 保持本机回归入口，逐项关闭上表缺口；每日周期、技能条件/分支和 FTS5 索引已补齐基线，继续推进更丰富日历、场景关系、嵌套技能和检索排序评估。
 2. 为模型网关与知觉适配器接入实际实现，建立独立测试集，明确支持任务域和失败回退。
 3. 建立学习、反射、联想的独立场景对照与消融实验，达不到收益的候选保持禁用。
 4. 完成资源保留策略及 72 小时长跑，再根据设备协议开展真实设备验证。
 
 本地验证证据见 [认知仿真验收记录](validation/cognitive-report.md)，原研发工作包和预算仍以 [详细计划](development-plan.md) 为准。
+
+0.4.0 的新增实测见 [周期调度与条件技能验收](validation/calendar-report.md)。

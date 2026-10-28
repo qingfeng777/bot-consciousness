@@ -22,3 +22,4 @@ jobs:
           python -m consciousness replay examples/preemption.jsonl --timed --stop-delay 0.1
           python -m consciousness simulate examples/cognitive.jsonl --data-dir local-data/ci
           python -m consciousness simulate examples/cognitive.jsonl --data-dir local-data/ci
+          python -m consciousness simulate examples/calendar-skills.jsonl --data-dir local-data/calendar

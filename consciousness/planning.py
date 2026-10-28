@@ -8,20 +8,44 @@ from .domain import DuplicateConflict, InvalidInput, canonical
 from .state import identifier, number
 
 
+def validate_predicate(predicate):
+    if not isinstance(predicate, dict) or set(predicate) != {"entity", "attribute", "value"}:
+        raise InvalidInput("condition requires entity, attribute and value")
+    identifier(predicate["entity"])
+    identifier(predicate["attribute"])
+    if type(predicate["value"]) not in (str, bool, int, float):
+        raise InvalidInput("condition value must be a scalar")
+    canonical(predicate)
+
+
 def validate_plan(plan):
-    if not isinstance(plan, dict) or set(plan) != {"goal", "steps", "evidence"}:
+    if (not isinstance(plan, dict) or not {"goal", "steps", "evidence"} <= set(plan)
+            or set(plan) - {"goal", "steps", "evidence", "requires"}):
         raise InvalidInput("plan requires goal, steps and evidence")
     identifier(plan["goal"])
     if not isinstance(plan["evidence"], list) or not plan["evidence"] or len(plan["evidence"]) > 32:
         raise InvalidInput("plan requires 1..32 evidence references")
     for item in plan["evidence"]:
         identifier(item)
+    requires = plan.get("requires", [])
+    if not isinstance(requires, list) or len(requires) > 16:
+        raise InvalidInput("plan condition budget exceeded")
+    for condition in requires:
+        validate_predicate(condition)
     if not isinstance(plan["steps"], list) or not 1 <= len(plan["steps"]) <= 8:
         raise InvalidInput("plan must have 1..8 steps")
     seen = set()
     for step in plan["steps"]:
-        if not isinstance(step, dict) or set(step) != {"id", "capability", "arguments", "after"}:
+        if (not isinstance(step, dict) or not {"id", "capability", "arguments", "after"} <= set(step)
+                or set(step) - {"id", "capability", "arguments", "after", "when", "requires"}):
             raise InvalidInput("invalid step schema")
+        if "when" in step:
+            validate_predicate(step["when"])
+        requires = step.get("requires", [])
+        if not isinstance(requires, list) or len(requires) > 16:
+            raise InvalidInput("step condition budget exceeded")
+        for condition in requires:
+            validate_predicate(condition)
         sid = identifier(step["id"])
         if sid in seen or not isinstance(step["after"], list) or any(d not in seen for d in step["after"]):
             raise InvalidInput("steps must have unique IDs and topologically ordered dependencies")
@@ -116,6 +140,13 @@ class Skills:
         sources = self.store.read("skills")[0].get("provenance", {}).get(key, [])
         return all(evidence.get(e, {}).get("active") for e in plan["evidence"] + sources)
 
+    def condition(self, predicate, at):
+        validate_predicate(predicate)
+        hits = self.knowledge.search(entity=predicate["entity"], attribute=predicate["attribute"], at=at, limit=100)
+        if not hits or any(not h["certain"] for h in hits):
+            return None
+        return any(type(h["value"]) is type(predicate["value"]) and h["value"] == predicate["value"] for h in hits)
+
     async def run(self, key, run_id, runtime, *, at):
         identifier(run_id)
         state, _ = self.store.read("skills")
@@ -128,14 +159,24 @@ class Skills:
             runs = state.setdefault("runs", {})
             if run_id in runs and runs[run_id]["key"] != key:
                 raise DuplicateConflict("run ID already pins another version")
-            runs.setdefault(run_id, dict(key=key, completed=[], status="ready"))
+            runs.setdefault(run_id, dict(key=key, completed=[], skipped=[], status="ready"))
         for step in plan["steps"]:
             run = self.store.read("skills")[0]["runs"][run_id]
-            if step["id"] in run["completed"]:
+            if step["id"] in run["completed"] or step["id"] in run.get("skipped", []):
                 continue
             event = "step-" + hashlib.sha256(canonical([run_id, key, step["id"]]).encode()).hexdigest()
             existing = next((t for t in runtime.journal.tasks() if t["event_id"] == event), None)
             if existing is None:
+                if any(self.condition(p, at) is not True for p in plan.get("requires", []) + step.get("requires", [])):
+                    return self._checkpoint(run_id, "blocked")
+                if "when" in step:
+                    matches = self.condition(step["when"], at)
+                    if matches is None:
+                        return self._checkpoint(run_id, "blocked")
+                    if matches is False:
+                        with self.store.edit("skills", event) as state:
+                            state["runs"][run_id].setdefault("skipped", []).append(step["id"])
+                        continue
                 goals = self.goals.evaluate(at)
                 goal = goals.get(plan["goal"])
                 reserved = goal and event in goal["attempts"]

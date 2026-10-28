@@ -1,0 +1,29 @@
+{
+  "version": "0.4.0",
+  "simulation": true,
+  "python": "3.10.12",
+  "platform": "Linux-6.8.0-57-generic-x86_64-with-glibc2.35",
+  "scenario": "examples/calendar-skills.jsonl",
+  "scenario_sha256": "a573cc7324191a2143dfd6d2ebb5dc4aecbde81b9948d9c15c55df03c3e82ae1",
+  "source_sha256": "98150a93f5acb7dcfffda009fbaba1c6f827944f8192d9d83366154a895ce7f6",
+  "runs": 100,
+  "scenario_events": 1700,
+  "completed_actions": 100,
+  "restarts": 100,
+  "max_external_concurrency": 1,
+  "distinct_outcome_hashes": 1,
+  "outcome_sha256": "d36879b89f300843cc5c610eea7886c739ab56d215a8b2362d3f8eb77b162c61",
+  "elapsed_seconds": 11.781282454001484,
+  "checks": {
+    "observable_goals_satisfied": true,
+    "restart_without_repeated_effect": true,
+    "deterministic_outcome": true,
+    "serial_execution": true
+  },
+  "limitations": [
+    "fixed annotated fixtures, not learned perception",
+    "offline model candidate fixture",
+    "same scenario repeated, not independent research validation",
+    "not a 72-hour soak"
+  ]
+}

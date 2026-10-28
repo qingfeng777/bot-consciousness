@@ -89,6 +89,10 @@ async def run(args):
                 for event in batch:
                     emit(event)
                 cursor = batch[-1]["seq"]
+            if journal._db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='module_state'").fetchone():
+                for row in journal._db.execute("SELECT * FROM module_state ORDER BY name"):
+                    emit({"module": row["name"], "revision": row["revision"],
+                          "schema_version": row["schema_version"], "state": json.loads(row["body"])})
             emit({"tasks": journal.tasks()})
         finally:
             journal.close()

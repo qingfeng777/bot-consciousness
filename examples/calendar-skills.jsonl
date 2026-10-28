@@ -1,0 +1,17 @@
+{"at": 0, "op": "observe", "eid": "e", "modality": "text", "content": "cup is on wooden desk"}
+{"at": 0, "op": "claim", "cid": "location", "entity": "cup", "attribute": "location", "value": "wooden desk", "evidence": ["e"]}
+{"at": 0, "op": "goal", "gid": "g", "predicate": {"entity": "robot", "attribute": "done", "value": true}, "budget": 1}
+{"at": 0, "op": "skill", "sid": "conditional", "version": 1, "plan": {"goal": "g", "evidence": ["e"], "requires": [{"entity": "cup", "attribute": "location", "value": "wooden desk"}], "steps": [{"id": "s1", "capability": "say", "arguments": {"text": "I found the cup."}, "after": [], "when": {"entity": "cup", "attribute": "location", "value": "wooden desk"}}, {"id": "s2", "capability": "say", "arguments": {"text": "Searching elsewhere."}, "after": ["s1"], "when": {"entity": "cup", "attribute": "location", "value": "shelf"}}]}}
+{"at": 0, "op": "run_skill", "key": "conditional:1", "run_id": "run1"}
+{"at": 1, "op": "observe", "eid": "finished", "modality": "text", "content": "inspection complete"}
+{"at": 1, "op": "claim", "cid": "finished", "entity": "robot", "attribute": "done", "value": true, "evidence": ["finished"]}
+{"at": 1, "op": "calendar", "rid": "daily", "predicate": {"entity": "robot", "attribute": "checked", "value": true}, "hour": 0, "minute": 0, "zone": "UTC", "start": 1}
+{"at": 86400, "op": "calendar_tick"}
+{"at": 86401, "op": "observe", "eid": "check1", "modality": "text", "content": "daily check 1 completed"}
+{"at": 86401, "op": "claim", "cid": "check1", "entity": "robot:scheduled-d4016a3092aa0cc6b025f7c08e5e9cc7961a9a0d44788b7555a6f6fe067cd220", "attribute": "checked", "value": true, "evidence": ["check1"]}
+{"at": 172800, "op": "calendar_tick"}
+{"at": 172801, "op": "observe", "eid": "check2", "modality": "text", "content": "daily check 2 completed"}
+{"at": 172801, "op": "claim", "cid": "check2", "entity": "robot:scheduled-f53fb57d1663d66007ac0bcb4352b52ab038313d3adafadb68a1e0d3f3df3827", "attribute": "checked", "value": true, "evidence": ["check2"]}
+{"at": 172802, "op": "evaluate"}
+{"at": 172802, "op": "rebuild_index"}
+{"at": 172802, "op": "retrieve", "query": "wooden", "entity": "cup"}

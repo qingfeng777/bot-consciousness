@@ -21,7 +21,7 @@ Leveraging the groundbreaking advancements in large model tools in recent years 
 
 ## Implementation status
 
-Version 0.3.0 includes a bounded local simulation baseline across the 20 design modules, including temporal knowledge, conflict resolution, goals, telemetry, affect, skills and learning candidate publication. This does not complete the research acceptance criteria. The deterministic Python runtime provides text inputs,
+Version 0.4.0 includes a bounded local simulation baseline across the 20 design modules, including temporal knowledge, conflict resolution, goals, telemetry, affect, skills and learning candidate publication. This does not complete the research acceptance criteria. The deterministic Python runtime provides text inputs,
 durable events, bounded working memory, serial simulated actions, confirmed
 stopping, and restart reconciliation. No model or real robot is connected.
 

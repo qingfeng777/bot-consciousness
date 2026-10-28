@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from .agency import Affect, Goals, Identity, Motivation, Scene, SelfState
+from .calendar import Calendar
 from .domain import InvalidInput, Signal, canonical
 from .driver import SimulatedDriver
 from .journal import Journal
@@ -24,6 +25,7 @@ class CognitiveSystem:
         self.scene = Scene(self.store)
         self.telemetry = SelfState(self.store)
         self.goals = Goals(self.store, self.knowledge)
+        self.calendar = Calendar(self.store, self.goals)
         self.affect = Affect(self.store)
         self.identity = Identity(self.store)
         self.motivation = Motivation(self.store, self.goals, self.telemetry)
@@ -45,6 +47,13 @@ class CognitiveSystem:
             return self.perception.ingest(at=at, **data)
         if operation == "claim":
             return self.knowledge.claim(**data)
+        if operation == "rebuild_index":
+            return self.knowledge.rebuild_index()
+        if operation == "retrieve":
+            result = self.knowledge.ranked(at=at, **data)
+            with self.store.edit("retrieval_queries", "query") as state:
+                state["last"] = dict(query=data, at=at, hits=result)
+            return result
         if operation == "resolve":
             return self.knowledge.resolve(**data)
         if operation == "withdraw":
@@ -56,6 +65,11 @@ class CognitiveSystem:
             return self.motivation.tick(at)
         if operation == "goal":
             return self.goals.add(**data)
+        if operation == "calendar":
+            data.setdefault("start", at)
+            return self.calendar.configure(**data)
+        if operation == "calendar_tick":
+            return self.calendar.tick(at)
         if operation == "evaluate":
             return self.goals.evaluate(at)
         if operation == "affect":

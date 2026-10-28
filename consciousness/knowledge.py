@@ -1,6 +1,7 @@
 """M05/M18: sourced temporal claims, explicit disputes and withdrawal closure."""
 from copy import deepcopy
 import math
+import sqlite3
 
 from .domain import DuplicateConflict, InvalidInput
 from .state import identifier, number
@@ -128,13 +129,15 @@ class Knowledge:
             state["claims"][claim_id]["withdrawn"] = True
             self._refresh(state)
 
-    def search(self, *, entity=None, attribute=None, at=0, context="global", query="", limit=10):
+    def search(self, *, entity=None, attribute=None, at=0, context="global", query="", limit=10, claim_ids=None):
         number(at)
         if type(limit) is not int or not 1 <= limit <= 100:
             raise InvalidInput("retrieval limit must be 1..100")
         state, revision = self.store.read("knowledge")
         result = []
         for claim in state.get("claims", {}).values():
+            if claim_ids is not None and claim["id"] not in claim_ids:
+                continue
             if claim["status"] != "active" or claim["context"] != context:
                 continue
             if entity is not None and claim["entity"] != entity or attribute is not None and claim["attribute"] != attribute:
@@ -157,3 +160,56 @@ class Knowledge:
 
     def conflicts(self):
         return list(self.store.read("knowledge")[0].get("conflicts", {}).values())
+
+    def rebuild_index(self):
+        """Optional SQLite FTS5 index; source claims remain authoritative."""
+        state, revision = self.store.read("knowledge")
+        claims = state.get("claims", {})
+        if len(claims) > 1000:
+            raise InvalidInput("local full-text index baseline supports at most 1000 claims")
+        try:
+            with self.store.edit("retrieval_index", "rebuild") as index:
+                db = self.store.journal._db
+                db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(memory_id UNINDEXED, body)")
+                db.execute("DELETE FROM memory_fts")
+                for claim in claims.values():
+                    if claim["status"] == "active":
+                        text = " ".join(str(claim[k]) for k in ("entity", "attribute", "value"))
+                        db.execute("INSERT INTO memory_fts VALUES (?,?)", (claim["id"], text))
+                index.update(knowledge_revision=revision, claims=len(claims))
+        except sqlite3.OperationalError as exc:
+            raise InvalidInput("FTS5 unavailable or index rebuild failed; structured search remains available") from exc
+        return revision
+
+    def ranked(self, query, *, at=0, entity=None, attribute=None, context="global", limit=10):
+        if not isinstance(query, str) or not query.strip() or len(query) > 1024:
+            raise InvalidInput("query must contain 1..1024 characters")
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise InvalidInput("retrieval limit must be 1..100")
+        state, revision = self.store.read("knowledge")
+        indexed, _ = self.store.read("retrieval_index")
+        stale = indexed.get("knowledge_revision") != revision
+        if stale:
+            return [{**h, "stale_index": True, "retrieval": "substring_fallback", "score": None}
+                    for h in self.search(entity=entity, attribute=attribute, at=at, context=context, query=query, limit=limit)]
+        expression = " AND ".join('"' + part.replace('"', '""') + '"' for part in query.split())
+        try:
+            rows = self.store.journal._db.execute(
+                "SELECT memory_id,bm25(memory_fts) AS score FROM memory_fts WHERE memory_fts MATCH ? "
+                "ORDER BY score,memory_id LIMIT 1000", (expression,)).fetchall()
+        except sqlite3.OperationalError:
+            return [{**h, "stale_index": True, "retrieval": "substring_fallback", "score": None}
+                    for h in self.search(entity=entity, attribute=attribute, at=at, context=context, query=query, limit=limit)]
+        # Apply authoritative temporal/conflict filtering before returning hits.
+        result = []
+        for row in rows:
+            claim = state.get("claims", {}).get(row["memory_id"])
+            if claim is None or entity is not None and claim["entity"] != entity or attribute is not None and claim["attribute"] != attribute:
+                continue
+            valid = self.search(at=at, context=context, limit=1, claim_ids={row["memory_id"]})
+            hit = next((h for h in valid if h["id"] == row["memory_id"]), None)
+            if hit:
+                result.append({**hit, "retrieval": "fts5_bm25", "score": row["score"]})
+                if len(result) >= limit:
+                    break
+        return result

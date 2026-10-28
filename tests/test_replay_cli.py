@@ -89,3 +89,27 @@ class CliTests(unittest.TestCase):
             result = self.invoke("inspect", "--data-dir", str(missing))
             self.assertEqual(result.returncode, 2)
             self.assertFalse(missing.exists())
+
+    def test_cognitive_calendar_cli_exports_state_and_restores_index(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data = str(Path(directory) / "data")
+            backup = str(Path(directory) / "backup")
+            run = self.invoke("simulate", "examples/calendar-skills.jsonl", "--data-dir", data)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertTrue(all(g["status"] == "satisfied" for g in json.loads(run.stdout)["goals"].values()))
+            inspected = self.invoke("inspect", "--data-dir", data)
+            self.assertEqual(inspected.returncode, 0, inspected.stderr)
+            modules = {r["module"]: r["state"] for r in map(json.loads, inspected.stdout.splitlines()) if "module" in r}
+            self.assertEqual(len(modules["calendar"]["occurrences"]), 2)
+            self.assertEqual(modules["skills"]["runs"]["run1"]["skipped"], ["s2"])
+            self.assertEqual(modules["retrieval_queries"]["last"]["hits"][0]["retrieval"], "fts5_bm25")
+            copied = self.invoke("backup", "--data-dir", data, backup)
+            self.assertEqual(copied.returncode, 0, copied.stderr)
+            from consciousness.journal import Journal
+            from consciousness.knowledge import Knowledge
+            from consciousness.state import StateStore
+            journal = Journal(Path(backup) / "journal.sqlite3")
+            try:
+                self.assertEqual(Knowledge(StateStore(journal)).ranked("wooden", at=172802)[0]["id"], "location")
+            finally:
+                journal.close()
