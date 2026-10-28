@@ -20,6 +20,13 @@
 ## 架构图示
 ![Architecture](architecture.png)
 
+## 实现设计与研发计划
+
+- [实现设计](docs/implementation-design.md)：模块映射、数据契约、调度中断、记忆学习及验收目标。
+- [研发计划](docs/development-plan.md)：分阶段任务、依赖、人日估算和场景验收。
+
+当前新增内容为设计文档，尚未包含运行实现。
+
 # 核心模块
 ## 输入处理
 1. 以包含语义的文本等可不另外处理，直接作为输入
