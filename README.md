@@ -28,7 +28,21 @@
 - [详细研发计划](docs/development-plan.md)：分层交付、团队容量、里程碑、集成和设备计划。
 - [60 个模块研发工作包](docs/work-breakdown.md)：每包产物、责任角色、依赖与人日估算。
 
-当前新增内容为设计文档，尚未包含运行实现。
+## 当前实现与运行
+
+已开始按研发计划实现，当前版本提供文本输入、规则注意力、持久事件日志、串行模拟执行、中断确认及恢复核对。所有动作均为模拟，不连接真实模型或机器人。
+
+```sh
+python3 -m consciousness run '小智，你好' '火警'
+python3 -m consciousness replay examples/basic.jsonl
+python3 -m unittest discover -s tests -v
+```
+
+需要 Python 3.10 以上及支持 POSIX 文件锁的系统，运行时无第三方依赖。
+
+- [运行与恢复说明](docs/runtime-guide.md)
+- [实际内核接口](docs/runtime-contracts.md)
+- [研发进度与验收记录](docs/progress.md)
 
 # 核心模块
 ## 输入处理

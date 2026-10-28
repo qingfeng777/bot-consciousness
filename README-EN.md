@@ -19,6 +19,23 @@ Leveraging the groundbreaking advancements in large model tools in recent years 
 ## Architecture
 ![Architecture](architecture-en.png)
 
+## Implementation status
+
+Development has started with a deterministic Python runtime: text inputs,
+durable events, bounded working memory, serial simulated actions, confirmed
+stopping, and restart reconciliation. No model or real robot is connected.
+
+```sh
+python3 -m consciousness run 'hello' 'fire!'
+python3 -m consciousness replay examples/basic.jsonl
+python3 -m unittest discover -s tests -v
+```
+
+Requires Python 3.10+ and a POSIX platform. Runtime dependencies are limited to
+the standard library. See the [runtime guide](docs/runtime-guide.md) and
+[development progress](docs/progress.md) (Chinese) for supported behavior and
+remaining work.
+
 # Core Modules
 ## Input Processing
 1. Text containing semantics can be directly used as input without additional processing.

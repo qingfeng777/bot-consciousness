@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bot-consciousness"
+version = "0.1.0"
+description = "A traceable cognitive runtime with simulated actions"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+bot-consciousness = "consciousness.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["consciousness*"]

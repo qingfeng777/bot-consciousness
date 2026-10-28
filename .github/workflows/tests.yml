@@ -1,0 +1,21 @@
+name: Runtime checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Unit and fault-injection tests
+        run: python -m unittest discover -s tests -v
+      - name: Simulated CLI and replay
+        run: |
+          python -m consciousness run '小智，你好' '火警'
+          python -m consciousness replay examples/basic.jsonl
