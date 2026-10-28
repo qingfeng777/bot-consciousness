@@ -22,8 +22,11 @@
 
 ## 实现设计与研发计划
 
-- [实现设计](docs/implementation-design.md)：模块映射、数据契约、调度中断、记忆学习及验收目标。
-- [研发计划](docs/development-plan.md)：分阶段任务、依赖、人日估算和场景验收。
+- [总体实现设计](docs/implementation-design.md)：模块映射、数据流与系统边界。
+- [20 个模块详细设计](docs/modules/README.md)：内部机制、接口、研究难点、异常处理与开发拆分。
+- [跨模块协议与系统验证](docs/system-contracts.md)：状态不变量、事件目录、25 类场景和算法验收基准。
+- [详细研发计划](docs/development-plan.md)：分层交付、团队容量、里程碑、集成和设备计划。
+- [60 个模块研发工作包](docs/work-breakdown.md)：每包产物、责任角色、依赖与人日估算。
 
 当前新增内容为设计文档，尚未包含运行实现。
 
