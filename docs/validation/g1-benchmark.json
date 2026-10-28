@@ -1,0 +1,36 @@
+{
+  "version": "0.2.0",
+  "simulation": true,
+  "python": "3.10.12",
+  "platform": "Linux-6.8.0-57-generic-x86_64-with-glibc2.35",
+  "machine": "x86_64",
+  "logical_cpus": 12,
+  "source_sha256": "5d15f6df8d64be8ad6a14820f7adfe765058a3fd2f824c09cbe1df2f28320922",
+  "sqlite": "3.37.2",
+  "storage": "temporary SQLite WAL, synchronous FULL",
+  "trials": 100,
+  "inputs": 200,
+  "target_inputs_per_second": 20.0,
+  "observed_inputs_per_second": 20.000133184788687,
+  "stop_request_latency": {
+    "count": 100,
+    "p50_ms": 1.2772320042131469,
+    "p95_ms": 2.004756999667734,
+    "p99_ms": 3.9658699970459566,
+    "max_ms": 4.143418991588987
+  },
+  "ingress_to_stop_p95_ms": 5.641509997076355,
+  "max_external_concurrency": 1,
+  "elapsed_seconds": 9.979534255006001,
+  "process_maxrss_kib": 548092,
+  "acceptance": {
+    "stop_request_p95_at_most_100ms": true,
+    "external_concurrency_at_most_one": true
+  },
+  "limitations": [
+    "simulated stop only",
+    "alternating background/emergency text",
+    "not a 72-hour soak test",
+    "not a hardware or model benchmark"
+  ]
+}

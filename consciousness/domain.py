@@ -44,6 +44,10 @@ class StoreBusy(DomainError):
     code = "STORE_BUSY"
 
 
+class CapacityExceeded(Backpressure):
+    code = "CAPACITY_EXCEEDED"
+
+
 class Status(str, Enum):
     QUEUED = "queued"
     RUNNING = "running"
@@ -70,6 +74,9 @@ class Signal:
     trace_id: str = field(default_factory=new_id)
     source: str = "user"
     schema_version: str = "1.0"
+    robot_id: str = "robot-demo"
+    occurred_at: float | None = None
+    deadline_at: float | None = None
 
     def validate(self):
         if self.schema_version != "1.0":
@@ -78,16 +85,25 @@ class Signal:
             raise InvalidInput("text must be nonempty")
         if len(self.text.encode("utf-8")) > 16384:
             raise InvalidInput("text exceeds 16 KiB")
-        for key in (self.event_id, self.trace_id, self.source):
+        for key in (self.event_id, self.trace_id, self.source, self.robot_id):
             if not isinstance(key, str) or not key or len(key) > 128:
                 raise InvalidInput("identifiers must contain 1..128 characters")
         if self.source not in {"user", "sensor"}:
             raise InvalidInput("outputs and internal feedback are not external inputs")
+        for value in (self.occurred_at, self.deadline_at):
+            if value is not None and (type(value) not in (int, float) or not math.isfinite(value) or value < 0):
+                raise InvalidInput("timestamps must be finite nonnegative Unix seconds")
 
     def fingerprint(self):
         # Retry traces may differ; identity of the accepted content must not.
-        return canonical({"text": self.text, "source": self.source,
-                          "schema_version": self.schema_version})
+        fields = {"text": self.text, "source": self.source, "schema_version": self.schema_version}
+        # Preserve the v1 fingerprint for retries of previously accepted signals.
+        if self.robot_id != "robot-demo":
+            fields["robot_id"] = self.robot_id
+        for name in ("occurred_at", "deadline_at"):
+            if getattr(self, name) is not None:
+                fields[name] = getattr(self, name)
+        return canonical(fields)
 
 
 @dataclass(frozen=True)

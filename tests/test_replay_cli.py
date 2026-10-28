@@ -58,3 +58,34 @@ class CliTests(unittest.TestCase):
         result = self.invoke("replay", "examples/basic.jsonl")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["counts"]["completed"], 3)
+
+    def test_timed_cli_and_backup_restore(self):
+        timed = self.invoke("replay", "examples/preemption.jsonl", "--timed", "--stop-delay", "0.1")
+        self.assertEqual(timed.returncode, 0, timed.stderr)
+        self.assertEqual(json.loads(timed.stdout)["counts"]["cancelled"], 1)
+        with tempfile.TemporaryDirectory() as directory:
+            data = str(Path(directory) / "data")
+            backup = str(Path(directory) / "backup")
+            result = self.invoke("run", "hello", "--data-dir", data, "--robot-id", "robot-test")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            result = self.invoke("backup", "--data-dir", data, backup)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue((Path(backup) / "manifest.json").exists())
+            self.assertFalse((Path(backup) / "INCOMPLETE").exists())
+            duplicate = self.invoke("backup", "--data-dir", data, backup)
+            self.assertEqual(duplicate.returncode, 2)
+            resumed = self.invoke("resume", "--data-dir", backup)
+            self.assertEqual(resumed.returncode, 0, resumed.stderr)
+            summary = json.loads(resumed.stdout)
+            self.assertEqual(summary["counts"]["completed"], 1)
+            self.assertEqual(summary["storage"]["robot_id"], "robot-test")
+            (Path(backup) / "INCOMPLETE").write_text("incomplete")
+            blocked = self.invoke("resume", "--data-dir", backup)
+            self.assertEqual(blocked.returncode, 2)
+
+    def test_inspection_does_not_create_missing_data_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            missing = Path(directory) / "missing"
+            result = self.invoke("inspect", "--data-dir", str(missing))
+            self.assertEqual(result.returncode, 2)
+            self.assertFalse(missing.exists())

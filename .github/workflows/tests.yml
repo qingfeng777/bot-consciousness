@@ -19,3 +19,4 @@ jobs:
         run: |
           python -m consciousness run '小智，你好' '火警'
           python -m consciousness replay examples/basic.jsonl
+          python -m consciousness replay examples/preemption.jsonl --timed --stop-delay 0.1

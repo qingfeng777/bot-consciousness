@@ -30,11 +30,12 @@
 
 ## 当前实现与运行
 
-已开始按研发计划实现，当前版本提供文本输入、规则注意力、持久事件日志、串行模拟执行、中断确认及恢复核对。所有动作均为模拟，不连接真实模型或机器人。
+已开始按研发计划实现，当前版本 0.2.0 提供文本输入、规则注意力、持久事件日志、串行模拟执行、中断确认及恢复核对，并支持数据库升级、容量预算、备份、任务老化与截止时间、带时间回放。所有动作均为模拟，不连接真实模型或机器人。
 
 ```sh
 python3 -m consciousness run '小智，你好' '火警'
 python3 -m consciousness replay examples/basic.jsonl
+python3 -m consciousness replay examples/preemption.jsonl --timed --stop-delay 0.1
 python3 -m unittest discover -s tests -v
 ```
 
@@ -43,6 +44,7 @@ python3 -m unittest discover -s tests -v
 - [运行与恢复说明](docs/runtime-guide.md)
 - [实际内核接口](docs/runtime-contracts.md)
 - [研发进度与验收记录](docs/progress.md)
+- [G1 工程增强验证报告](docs/validation/g1-report.md)
 
 # 核心模块
 ## 输入处理

@@ -1,4 +1,4 @@
-# 内核版本 0.1 接口与不变量
+# 内核版本 0.2 接口与不变量
 
 本文件描述实际实现的契约，与 [全量系统设计](system-contracts.md) 区分。当前实现覆盖 M01、M03、M04、M08、M14、M20 的首批内核子产物，不意味着这些模块全范围完成。
 
@@ -6,7 +6,7 @@
 
 | 对象 | 实现字段 | 校验或所有权 |
 | --- | --- | --- |
-| Signal | text、event_id、trace_id、source、schema_version | 仅 1.0；文本非空且不超过 16 KiB；source 为 user 或 sensor |
+| Signal | text、event_id、trace_id、source、schema_version、robot_id、occurred_at、deadline_at | 消息版本仍为 1.0；文本非空且不超过 16 KiB；source 为 user 或 sensor；可选时间为有限非负 Unix 秒 |
 | Decision | priority、salience、capability、arguments、reason | 由 Attention 内部生成，不从外部文本反序列化执行 |
 | Action | id、task_id、generation、epoch、capability、arguments、idempotency_key、trace_id | Journal 占用槽位时生成，先 prepared 再 sending |
 | Result | action_id、generation、epoch、status、evidence、detail | 必须匹配原动作，status 为 completed、cancelled 或 failed，证据非空 |
@@ -60,4 +60,12 @@ Driver.execute(Action) 返回最终 Result；Driver.stop(Action) 返回 StopRece
 | 执行中发生存储故障 | 尝试有界停止，运行时进入故障状态，不继续派发；重启后核实 |
 | 驱动返回可信 failed | 任务失败，可继续独立队列任务 |
 
-SQLite 的事务、消费检查点与 POSIX 锁用于单主机一致性，不提供硬件侧恰好一次保证。若出现未知 schema 版本，启动失败而不自动覆盖版本号。生产级迁移工具、备份命令与多节点所有权仍是后续任务。
+SQLite 的事务、消费检查点与 POSIX 锁用于单主机一致性，不提供硬件侧恰好一次保证。若出现未知 schema 版本，启动失败而不自动覆盖版本号。当前提供明确的 v1 到 v2 升级及备份命令；生产级通用迁移框架与多节点所有权仍是后续任务。
+
+## 版本升级与本阶段补充
+
+数据库 schema 已升为 2，消息 schema 保持 1.0。schema 1 到 2 是受事务保护的新增列升级；robot_id、来源、发生与接收时间、排队时间及截止时间进入持久存储。
+
+身份以一个数据库对应一个机器人为边界。容量受理预算、老化时间均持久化，默认重启继承；只有显式传参才修改配置。截止时间表示最晚开始时间，老化不把普通任务提升到 P0，静态 priority 字段不因老化重写，排序时计算有效级别。
+
+CAPACITY_EXCEEDED 拒绝新任务，但不破坏已有任务的收尾与输入重试。它不是硬磁盘上限；备份不删除原数据，去重记录不自动过期。事件导出以 type/causation_id 为规范名，同时保留 kind/cause_id 兼容别名。

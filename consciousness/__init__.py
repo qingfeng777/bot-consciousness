@@ -1,3 +1,3 @@
 """Deterministic cognitive runtime. Hardware and model integrations are separate."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

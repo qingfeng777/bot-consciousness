@@ -6,20 +6,36 @@ this is a single-host contract, not a distributed lease or hardware fence.
 from contextlib import contextmanager
 import fcntl
 import json
+import math
 from pathlib import Path
 import sqlite3
 
 from .clock import RealClock
-from .domain import (Action, Backpressure, Decision, DuplicateConflict, RevisionConflict,
-                     Signal, Status, StoreBusy, TERMINAL, TRANSITIONS, canonical, new_id)
+from .domain import (Action, Backpressure, CapacityExceeded, Decision, DuplicateConflict,
+                     InvalidInput, RevisionConflict, Signal, Status, StoreBusy,
+                     TERMINAL, TRANSITIONS, canonical, new_id, positive_number)
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class Journal:
-    def __init__(self, path=":memory:", *, clock=None):
+    def __init__(self, path=":memory:", *, clock=None, robot_id=None,
+                 max_tasks=None, max_events=None, aging_seconds=None):
         self.clock = clock or RealClock()
+        if aging_seconds is not None:
+            positive_number(aging_seconds, "aging_seconds")
+        for value in (max_tasks, max_events):
+            if value is not None and (type(value) is not int or value < 1):
+                raise ValueError("capacity limits must be positive integers")
+        if robot_id is not None and (not isinstance(robot_id, str) or not 1 <= len(robot_id) <= 128):
+            raise ValueError("robot_id must contain 1..128 characters")
+        self._requested_limits = {"max_tasks": max_tasks, "max_events": max_events, "aging_seconds": aging_seconds}
+        self.max_tasks = max_tasks if max_tasks is not None else 100000
+        self.max_events = max_events if max_events is not None else 2000000
+        self.aging_seconds = aging_seconds if aging_seconds is not None else 30.0
+        self._wall_origin, self._mono_origin = self.clock.now(), self.clock.monotonic()
+        self.path = str(path)
         self._lockfile = None
         self._db = None
         if str(path) != ":memory:":
@@ -38,7 +54,7 @@ class Journal:
             self._db.execute("PRAGMA journal_mode=WAL")
             self._db.execute("PRAGMA synchronous=FULL")
             version = self._db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, SCHEMA_VERSION):
+            if version not in (0, 1, SCHEMA_VERSION):
                 raise ValueError(f"unsupported journal schema {version}")
             self._db.executescript("""
                 CREATE TABLE IF NOT EXISTS events (
@@ -70,11 +86,76 @@ class Journal:
                     PRIMARY KEY(consumer,event_id)
                 );
                 CREATE INDEX IF NOT EXISTS task_queue ON tasks(status,priority,salience,enqueue_seq);
-                PRAGMA user_version=1;
             """)
+            self._migrate(version, robot_id)
         except BaseException:
             self.close()
             raise
+
+    def _migrate(self, version, requested_robot):
+        """Transactional, additive v1 -> v2 upgrade. Old rows/IDs remain intact."""
+        with self.transaction():
+            self._db.execute("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY,value TEXT NOT NULL)")
+            stored = self._db.execute("SELECT value FROM metadata WHERE key='robot_id'").fetchone()
+            self.robot_id = stored[0] if stored else (requested_robot or "robot-demo")
+            if requested_robot is not None and self.robot_id != requested_robot:
+                raise InvalidInput("journal belongs to a different robot")
+            if not stored:
+                self._db.execute("INSERT INTO metadata VALUES ('robot_id',?)", (self.robot_id,))
+            for name, requested in self._requested_limits.items():
+                stored_limit = self._db.execute("SELECT value FROM metadata WHERE key=?", (name,)).fetchone()
+                value = (requested if requested is not None else
+                         json.loads(stored_limit[0]) if stored_limit else getattr(self, name))
+                if name == "aging_seconds":
+                    positive_number(value, name)
+                elif type(value) is not int or value < 1:
+                    raise ValueError("invalid persisted capacity configuration")
+                setattr(self, name, value)
+                self._db.execute("INSERT INTO metadata VALUES (?,?) ON CONFLICT(key) "
+                                 "DO UPDATE SET value=excluded.value", (name, canonical(value)))
+            if version < 2:
+                for name, declaration in (("robot_id", "TEXT"), ("source", "TEXT"),
+                                          ("occurred_at", "REAL"), ("received_at", "REAL")):
+                    self._db.execute(f"ALTER TABLE events ADD COLUMN {name} {declaration}")
+                self._db.execute("UPDATE events SET robot_id=?,source='legacy',occurred_at=NULL,received_at=created",
+                                 (self.robot_id,))
+                self._db.execute("ALTER TABLE tasks ADD COLUMN enqueued_at REAL")
+                self._db.execute("ALTER TABLE tasks ADD COLUMN deadline_at REAL")
+                self._db.execute("UPDATE tasks SET enqueued_at=(SELECT created FROM events WHERE events.seq=tasks.enqueue_seq)")
+            self._db.execute("PRAGMA user_version=2")
+
+    def schedule_now(self):
+        # Wall-clock changes during a run cannot create negative waiting times.
+        return self._wall_origin + self.clock.monotonic() - self._mono_origin
+
+    def usage(self):
+        return {"tasks": self._db.execute("SELECT count(*) FROM tasks").fetchone()[0],
+                "events": self._db.execute("SELECT count(*) FROM events").fetchone()[0],
+                "max_tasks": self.max_tasks, "max_events": self.max_events,
+                "robot_id": self.robot_id, "schema_version": SCHEMA_VERSION,
+                "database_pages": self._db.execute("PRAGMA page_count").fetchone()[0],
+                "page_size": self._db.execute("PRAGMA page_size").fetchone()[0]}
+
+    def backup(self, destination):
+        """Consistent SQLite snapshot, never overwrite an existing user file."""
+        path = Path(destination)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("xb"):
+            pass
+        try:
+            target = sqlite3.connect(path)
+            try:
+                self._db.backup(target)
+                result = target.execute("PRAGMA integrity_check").fetchone()[0]
+                if result != "ok":
+                    raise RuntimeError("backup integrity check failed")
+            finally:
+                target.close()
+        except BaseException:
+            path.unlink(missing_ok=True)
+            raise
+        return {"path": str(path.resolve()), "schema_version": SCHEMA_VERSION,
+                "robot_id": self.robot_id, "integrity": "ok"}
 
     @contextmanager
     def transaction(self):
@@ -86,12 +167,15 @@ class Journal:
             self._db.rollback()
             raise
 
-    def _event(self, kind, payload, trace_id, cause_id=None, event_id=None):
+    def _event(self, kind, payload, trace_id, cause_id=None, event_id=None,
+               source="runtime", occurred_at=None):
         eid = event_id or new_id()
+        received = self.clock.now()
         cursor = self._db.execute(
-            "INSERT INTO events(event_id,trace_id,cause_id,kind,payload,created,schema_version) "
-            "VALUES (?,?,?,?,?,?,?)",
-            (eid, trace_id, cause_id, kind, canonical(payload), self.clock.now(), "1.0"))
+            "INSERT INTO events(event_id,trace_id,cause_id,kind,payload,created,schema_version,"
+            "robot_id,source,occurred_at,received_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (eid, trace_id, cause_id, kind, canonical(payload), received, "1.0",
+             self.robot_id, source, received if occurred_at is None else occurred_at, received))
         return cursor.lastrowid
 
     def record(self, kind, payload, trace_id="runtime", cause_id=None):
@@ -100,12 +184,21 @@ class Journal:
 
     def accept(self, signal: Signal, decision: Decision, max_pending: int):
         signal.validate()
+        if signal.robot_id != self.robot_id:
+            raise InvalidInput("signal belongs to a different robot")
         with self.transaction():
             duplicate = self._db.execute("SELECT * FROM tasks WHERE event_id=?", (signal.event_id,)).fetchone()
             if duplicate:
                 if duplicate["fingerprint"] != signal.fingerprint():
                     raise DuplicateConflict("event ID was already accepted with different content")
                 return dict(duplicate), False
+            usage = self.usage()
+            outstanding = self._db.execute("SELECT count(*) FROM tasks WHERE status NOT IN "
+                                           "('completed','cancelled','failed')").fetchone()[0]
+            # Admission budget includes headroom for accepted tasks to stop/finish.
+            # Critical receipts remain writable even when the admission budget is full.
+            if usage["tasks"] >= self.max_tasks or usage["events"] + 16 * (outstanding + 1) > self.max_events:
+                raise CapacityExceeded("journal admission budget exhausted; back up and provision capacity")
             count = self._db.execute("SELECT count(*) FROM tasks WHERE status='queued'").fetchone()[0]
             if count >= max_pending:
                 worst = self._db.execute(
@@ -116,13 +209,15 @@ class Journal:
                 self._transition(worst["id"], Status.CANCELLED.value, "emergency_queue_eviction")
             task_id = new_id()
             seq = self._event("input.accepted", {"text": signal.text, "source": signal.source},
-                              signal.trace_id, event_id=signal.event_id)
+                              signal.trace_id, event_id=signal.event_id, source=signal.source,
+                              occurred_at=signal.occurred_at)
             self._db.execute(
                 "INSERT INTO tasks(id,event_id,fingerprint,trace_id,priority,salience,capability,"
-                "arguments,status,enqueue_seq,reason) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                "arguments,status,enqueue_seq,reason,enqueued_at,deadline_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (task_id, signal.event_id, signal.fingerprint(), signal.trace_id,
                  decision.priority, decision.salience, decision.capability,
-                 canonical(decision.arguments), "queued", seq, decision.reason))
+                 canonical(decision.arguments), "queued", seq, decision.reason,
+                 self.schedule_now(), signal.deadline_at))
             self._event("task.queued", {"task_id": task_id, "priority": decision.priority,
                                        "reason": decision.reason}, signal.trace_id, signal.event_id)
             return self.task(task_id), True
@@ -156,8 +251,18 @@ class Journal:
             if self._db.execute("SELECT 1 FROM tasks WHERE status IN "
                                 "('running','waiting_stop','outcome_unknown') LIMIT 1").fetchone():
                 return None
-            row = self._db.execute("SELECT * FROM tasks WHERE status='queued' "
-                                   "ORDER BY priority ASC,salience DESC,enqueue_seq ASC LIMIT 1").fetchone()
+            now = self.schedule_now()
+            expired = self._db.execute("SELECT id FROM tasks WHERE status='queued' "
+                                       "AND deadline_at IS NOT NULL AND deadline_at<=?", (self.clock.now(),)).fetchall()
+            for task in expired:
+                self._transition(task["id"], "cancelled", "dispatch_deadline_expired")
+            candidates = self._db.execute("SELECT * FROM tasks WHERE status='queued'").fetchall()
+            def rank(task):
+                age = max(0, now - task["enqueued_at"]) / self.aging_seconds
+                priority = 0 if task["priority"] == 0 else max(1, task["priority"] - int(age))
+                return (priority, task["deadline_at"] if task["deadline_at"] is not None else math.inf,
+                        -task["salience"], task["enqueue_seq"])
+            row = min(candidates, key=rank) if candidates else None
             if row is None:
                 return None
             generation = row["generation"] + 1
@@ -212,6 +317,8 @@ class Journal:
         for row in rows:
             data = dict(row)
             data["payload"] = json.loads(data["payload"])
+            data["causation_id"] = data["cause_id"]
+            data["type"] = data["kind"]
             result.append(data)
         return result
 

@@ -1,5 +1,6 @@
 """Serialized external actions with durable stop and recovery semantics."""
 import asyncio
+from collections import deque
 from dataclasses import asdict
 
 from .attention import Attention
@@ -32,6 +33,8 @@ class Runtime:
         self._started = False
         self._closed = False
         self._fatal = None
+        self._interrupt_received_at = None
+        self.stop_request_latencies_ms = deque(maxlen=10000)
 
     async def start(self):
         if self._started:
@@ -109,6 +112,8 @@ class Runtime:
                 current = self.journal.task(self._action.task_id)
                 # Only higher priority class preempts; named inputs reorder the queue.
                 if decision.priority < current["priority"]:
+                    if not self._interrupt.is_set():
+                        self._interrupt_received_at = self.clock.monotonic()
                     self._interrupt.set()
             self._kick()
         return task["id"]
@@ -134,6 +139,7 @@ class Runtime:
                     return
                 self._action = action
                 self._interrupt.clear()
+                self._interrupt_received_at = None
                 try:
                     await self._execute(action)
                 finally:
@@ -155,6 +161,9 @@ class Runtime:
                 return
             reason = "action_timeout" if deadline in ready else "interrupted"
             self.journal.transition(action.task_id, "waiting_stop", reason)
+            if self._interrupt_received_at is not None:
+                self.stop_request_latencies_ms.append(
+                    1000 * (self.clock.monotonic() - self._interrupt_received_at))
             try:
                 receipt = await self._bounded(self.driver.stop(action), self.stop_timeout)
             except Exception as exc:
@@ -213,7 +222,8 @@ class Runtime:
         for task in tasks:
             counts[task["status"]] += 1
         return {"simulation": True, "counts": counts,
-                "blocked": counts["outcome_unknown"] > 0, "tasks": tasks}
+                "blocked": counts["outcome_unknown"] > 0, "tasks": tasks,
+                "storage": self.journal.usage()}
 
     async def close(self):
         if self._closed:
