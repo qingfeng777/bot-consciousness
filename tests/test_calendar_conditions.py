@@ -84,6 +84,12 @@ class CalendarTests(unittest.TestCase):
         self.calendar.disable('disabled')
         self.assertEqual(self.calendar.tick(utc('2024-01-02')), [])
 
+    def test_default_start_is_stable_when_configuration_reloads(self):
+        self.calendar.configure('default', self.predicate, hour=8, minute=0)
+        initial = self.store.read('calendar')
+        self.calendar.configure('default', self.predicate, hour=8, minute=0)
+        self.assertEqual(self.store.read('calendar'), initial)
+
 
 # Reuse fixtures without inheriting the base class's test methods.
 class SkillConditionTests(unittest.IsolatedAsyncioTestCase):

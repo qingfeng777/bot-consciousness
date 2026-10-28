@@ -14,7 +14,9 @@ class Calendar:
     def configure(self, rid, predicate, *, hour, minute, zone="UTC", start=None,
                   policy="run_once", catchup=3, fold=0, budget=1):
         identifier(rid)
-        start = self.store.journal.clock.now() if start is None else start
+        if start is None:
+            existing = self.store.read("calendar")[0].get("rules", {}).get(rid)
+            start = existing["definition"]["start"] if existing else self.store.journal.clock.now()
         number(start)
         if type(hour) is not int or not 0 <= hour <= 23 or type(minute) is not int or not 0 <= minute <= 59:
             raise InvalidInput("invalid local calendar time")
