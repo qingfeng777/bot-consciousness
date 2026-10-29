@@ -98,6 +98,32 @@ class ConfigPromptTests(unittest.TestCase):
         with self.assertRaises(InvalidInput):
             CloudConfig('https://example.invalid', 'm', 'key', extra_body={'messages': []})
 
+    def test_explicit_provider_key_reference_and_status_redaction(self):
+        env = {'BOT_MODEL_BASE_URL': 'https://example.invalid/v1',
+               'BOT_MODEL_NAME': 'model', 'BOT_MODEL_API_KEY_ENV': 'EXISTING_PROVIDER_KEY',
+               'EXISTING_PROVIDER_KEY': 'private-test-value'}
+        with patch.dict(os.environ, env, clear=True):
+            self.assertEqual(CloudConfig.from_env().api_key, 'private-test-value')
+            stream = io.StringIO()
+            with contextlib.redirect_stdout(stream):
+                self.assertEqual(main(['cloud-status']), 0)
+            self.assertEqual(json.loads(stream.getvalue()),
+                             {'configuration_valid': True, 'connectivity_tested': False})
+            self.assertNotIn('private-test-value', stream.getvalue())
+
+    def test_key_reference_never_guesses_or_falls_back(self):
+        env = {'BOT_MODEL_BASE_URL': 'https://example.invalid/v1',
+               'BOT_MODEL_NAME': 'model', 'OPENAI_API_KEY': 'unrelated-secret'}
+        for extra in [{}, {'BOT_MODEL_API_KEY_ENV': 'MISSING_KEY'},
+                      {'BOT_MODEL_API_KEY_ENV': 'bad\nname'},
+                      {'BOT_MODEL_API_KEY_ENV': 'OPENAI_API_KEY', 'BOT_MODEL_API_KEY': 'other-secret'}]:
+            with self.subTest(extra=extra), patch.dict(os.environ, dict(env, **extra), clear=True):
+                stream = io.StringIO()
+                with contextlib.redirect_stderr(stream):
+                    self.assertEqual(main(['cloud-status']), 2)
+                self.assertNotIn('unrelated-secret', stream.getvalue())
+                self.assertNotIn('other-secret', stream.getvalue())
+
     def test_all_prompts_have_contract_and_distinct_fingerprints(self):
         hashes = set()
         for purpose in SCHEMAS:

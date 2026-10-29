@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 import http.client
 import json
 import os
+import re
 import socket
 import ssl
 import threading
@@ -81,7 +82,17 @@ class CloudConfig:
     @classmethod
     def from_env(cls):
         from .prompting import SCHEMAS
-        missing = [name for name in ("BOT_MODEL_BASE_URL", "BOT_MODEL_NAME", "BOT_MODEL_API_KEY") if not os.environ.get(name)]
+        # Explicit references reuse an operator's provider key without copying it.
+        # Never guess a provider from unrelated credentials present in the shell.
+        key_env = os.environ.get("BOT_MODEL_API_KEY_ENV", "")
+        if key_env and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,127}", key_env):
+            raise InvalidInput("BOT_MODEL_API_KEY_ENV must name an environment variable")
+        if key_env and os.environ.get("BOT_MODEL_API_KEY"):
+            raise InvalidInput("configure only one of BOT_MODEL_API_KEY and BOT_MODEL_API_KEY_ENV")
+        api_key = os.environ.get(key_env or "BOT_MODEL_API_KEY", "")
+        missing = [name for name in ("BOT_MODEL_BASE_URL", "BOT_MODEL_NAME") if not os.environ.get(name)]
+        if not api_key:
+            missing.append("BOT_MODEL_API_KEY_ENV target" if key_env else "BOT_MODEL_API_KEY")
         if missing:
             raise InvalidInput("missing cloud configuration: " + ", ".join(missing))
         def flag(name, default):
@@ -90,7 +101,7 @@ class CloudConfig:
                 raise InvalidInput(name + " must be true or false")
             return value == "true"
         return cls(base_url=os.environ.get("BOT_MODEL_BASE_URL", ""), model=os.environ.get("BOT_MODEL_NAME", ""),
-                   api_key=os.environ.get("BOT_MODEL_API_KEY", ""),
+                   api_key=api_key,
                    timeout=float(os.environ.get("BOT_MODEL_TIMEOUT", "30")),
                    max_tokens=int(os.environ.get("BOT_MODEL_MAX_TOKENS", "2048")),
                    max_calls=int(os.environ.get("BOT_MODEL_MAX_CALLS", "20")),

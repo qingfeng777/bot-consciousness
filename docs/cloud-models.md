@@ -44,6 +44,21 @@ python3 -m consciousness simulate examples/cloud-scenario.jsonl --data-dir local
 
 这不是货币硬预算：token 上限和调用次数是客户端限制，费用仍取决于供应商计价。超时/取消可能发生在云端已开始生成之后，因此不承诺撤销计费。程序不自动重试 429、5xx、超时、坏格式或待确认请求。
 
+## 复用已有凭据与配置检查
+
+参考 [OpenClaw 的环境变量与 SecretRef 接入](https://github.com/openclaw/openclaw/blob/main/docs/gateway/authentication.md)，新增显式环境变量引用，避免重复复制已有供应商密钥。若部署环境已经注入相应密钥，可配置：
+
+```sh
+unset BOT_MODEL_API_KEY
+export BOT_MODEL_API_KEY_ENV=OPENAI_API_KEY
+# 同时显式设置与该密钥匹配的 BOT_MODEL_BASE_URL、BOT_MODEL_NAME。
+python3 -m consciousness cloud-status
+```
+
+`BOT_MODEL_API_KEY_ENV` 仅保存变量名，值由进程环境解析；也可引用其他供应商变量。不自动猜测密钥、不从浏览器或其他工具的登录文件导入、不自动回退。直接密钥与引用同时设置时拒绝启动。`cloud-status` 仅校验配置，成功不代表网络、余额或模型可用；真实请求仍使用上文 `cloud` 命令。
+
+本机本轮检查：Codex CLI 为 ChatGPT 登录，项目与常见供应商 API Key 环境变量均未配置，因此没有执行真实云端调用。ChatGPT 登录与 API Key 是不同认证方式，通用 API 调用需要适用的凭据，见 [官方认证说明](https://learn.chatgpt.com/docs/auth)。本实现没有 OAuth 登录或刷新令牌适配，不把 Codex 会话令牌当作通用 API Key。
+
 ## 13 类提示词与模块映射
 
 提示词在 `consciousness/prompts/`，系统约束和任务模板分开，版本为 1.0.0。运行时把完整 JSON Schema 附在模板后，记录完整提示词 SHA256；模板修改需要更新版本并重跑固定测试集。

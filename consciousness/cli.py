@@ -26,6 +26,12 @@ def storage(directory):
 
 
 async def run(args):
+    if args.command == "cloud-status":
+        from .cloud import CloudConfig
+        CloudConfig.from_env()
+        # Configuration only: neither disclose credentials nor imply connectivity.
+        emit({"configuration_valid": True, "connectivity_tested": False})
+        return 0
     if args.command == "prompts":
         from .prompting import PROMPT_VERSION, SCHEMAS, prompt
         if args.purpose:
@@ -173,6 +179,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="机器人认知内核 V0，仅模拟执行")
     sub = parser.add_subparsers(dest="command", required=True)
     from .prompting import SCHEMAS
+    sub.add_parser("cloud-status", help="校验云配置，不输出密钥、不发请求")
     prompts = sub.add_parser("prompts", help="查看云端模型提示词和输出契约，不发请求")
     prompts.add_argument("purpose", nargs="?", choices=sorted(SCHEMAS))
     cloud = sub.add_parser("cloud", help="调用配置的云模型，保存通过校验的候选")
