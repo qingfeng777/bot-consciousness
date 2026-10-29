@@ -118,3 +118,5 @@ python3 -m unittest discover -s tests -v
 2. 产出对下游的行为指令。
 3. 也可以直接输出情感、文字表达等。
 
+
+实时麦克风与扬声器入口：`python3 -m consciousness voice`，配置和限制见 [语音对话说明](docs/voice.md)。

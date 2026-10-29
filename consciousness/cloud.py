@@ -234,6 +234,10 @@ class CloudClient:
         body = canonical(payload).encode()
         if len(body) > 12 * 1024 * 1024:
             raise InvalidInput("cloud request exceeded 12 MiB")
+        return await self._request(body)
+
+    async def _request(self, body):
+        """Bound concurrency and transport lifetime for cloud requests."""
         loop = asyncio.get_running_loop()
         started = loop.time()
         await asyncio.wait_for(self._slots.acquire(), self.config.timeout)

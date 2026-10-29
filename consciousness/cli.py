@@ -26,6 +26,9 @@ def storage(directory):
 
 
 async def run(args):
+    if args.command == "voice":
+        from .voice import voice_session
+        return await voice_session(args, emit)
     if args.command == "cloud-status":
         from .cloud import CloudConfig
         CloudConfig.from_env()
@@ -179,6 +182,16 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="机器人认知内核 V0，仅模拟执行")
     sub = parser.add_subparsers(dest="command", required=True)
     from .prompting import SCHEMAS
+    voice = sub.add_parser("voice", help="Linux 麦克风与扬声器云端语音对话，Ctrl+C 停止")
+    voice.add_argument("--data-dir", default="local-data/voice")
+    voice.add_argument("--capture-device", default="default")
+    voice.add_argument("--playback-device", default="default")
+    voice.add_argument("--threshold", type=int, default=600, help="PCM16 能量门限，不是神经语音检测")
+    voice.add_argument("--silence", type=float, default=0.8)
+    voice.add_argument("--max-utterance", type=float, default=15)
+    voice.add_argument("--idle-timeout", type=float, default=30)
+    voice.add_argument("--turns", type=int, default=10)
+    voice.add_argument("--check", action="store_true", help="只检查音频工具，不打开麦克风")
     sub.add_parser("cloud-status", help="校验云配置，不输出密钥、不发请求")
     prompts = sub.add_parser("prompts", help="查看云端模型提示词和输出契约，不发请求")
     prompts.add_argument("purpose", nargs="?", choices=sorted(SCHEMAS))
@@ -214,6 +227,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         return asyncio.run(run(args))
+    except KeyboardInterrupt:
+        return 130
     except asyncio.TimeoutError:
         print(json.dumps({"error": "CLOUD_TIMEOUT", "detail": "cloud request deadline exceeded"}), file=sys.stderr)
         return 2
