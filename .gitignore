@@ -10,3 +10,7 @@ dist/
 *.sqlite3-*
 *.sqlite3.lock
 local-data/
+.env
+.env.*
+!.env.example
+*.local.json

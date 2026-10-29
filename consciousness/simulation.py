@@ -12,7 +12,7 @@ from .journal import Journal
 from .knowledge import Knowledge
 from .learning import Association, Learning, Reflexes
 from .perception import Perception
-from .planning import ModelGateway, Skills
+from .planning import Skills, validate_plan
 from .runtime import Runtime
 from .state import StateStore, number
 
@@ -33,6 +33,13 @@ class CognitiveSystem:
         self.learning = Learning(self.store)
         self.reflexes = Reflexes(self.store)
         self.association = Association(self.store)
+        self._cloud = None
+
+    async def infer(self, purpose, request_id, input, **kwargs):
+        from .cloud_cognition import CloudCognition
+        if self._cloud is None:
+            self._cloud = CloudCognition(self.store)
+        return await self._cloud.infer(purpose, request_id, input, **kwargs)
 
     async def handle(self, event):
         data = dict(event)
@@ -81,11 +88,27 @@ class CognitiveSystem:
         if operation == "run_skill":
             return await self.skills.run(runtime=self.runtime, at=at, **data)
         if operation == "model":
-            # Explicit offline fixture provider; does not perform inference.
-            async def provider(context):
-                return canonical(data["candidate"])
-            gateway = ModelGateway(self.store, provider)
-            return await gateway.generate(data["candidate"]["goal"], {}, data.get("generation", 0))
+            return await self.infer("plan", data["request_id"], data["input"],
+                                    scope=data.get("scope", "scenario"), generation=data.get("generation", 0),
+                                    evidence_ids=data.get("evidence_ids"))
+        if operation == "cloud":
+            return await self.infer(**data)
+        if operation == "fixture_model":
+            # Explicit offline regression fixture; never a fallback for cloud failures.
+            candidate = validate_plan(data["candidate"])
+            self.store.journal.record("model.fixture", {"goal": candidate["goal"]})
+            return candidate
+        if operation == "run_cloud_plan":
+            from .cloud_cognition import CloudCognition
+            ledger = self.store.read("cloud_requests")[0]
+            record = ledger.get("requests", {}).get(data["request_id"])
+            revisions = {name: self.store.read(name)[1] for name in CloudCognition.WATCHED}
+            if (not record or record["status"] != "accepted" or record["purpose"] != "plan"
+                    or record["result"]["status"] != "ok" or record["revisions"] != revisions
+                    or ledger["generations"].get(record["generation_key"]) != record["generation"]):
+                raise InvalidInput("cloud plan unavailable or stale")
+            key = self.skills.register(data["skill"], data["version"], record["result"]["data"])
+            return await self.skills.run(key, data["run_id"], self.runtime, at=at)
         if operation == "experience":
             return self.learning.experience(**data)
         if operation == "learn":

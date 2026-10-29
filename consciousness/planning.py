@@ -61,12 +61,18 @@ def validate_plan(plan):
 
 
 class ModelGateway:
-    """Provider protocol is an async callable returning JSON; no default network.
+    """Production defaults to cloud; injected async providers are test seams.
 
     Each request consumes a persisted call budget even if it times out. Only
     the current generation can return a usable candidate.
     """
-    def __init__(self, store, provider, *, max_calls=3, timeout=2):
+    def __init__(self, store, provider=None, *, max_calls=3, timeout=None):
+        self._cloud = provider is None
+        if provider is None:
+            from .cloud_cognition import CloudPlanProvider
+            provider = CloudPlanProvider(store)
+        if timeout is None:
+            timeout = provider.service.client.config.timeout if self._cloud else 2
         if type(max_calls) is not int or not 1 <= max_calls <= 10:
             raise InvalidInput("invalid model call budget")
         number(timeout, 0.001, 120)
@@ -85,7 +91,10 @@ class ModelGateway:
             state["calls"][goal] = calls + 1
             state["generations"][goal] = generation
         try:
-            raw = await asyncio.wait_for(self.provider(deepcopy(context)), self.timeout)
+            payload = deepcopy(context)
+            if self._cloud:
+                payload.update(goal=goal, generation=generation)
+            raw = await asyncio.wait_for(self.provider(payload), self.timeout)
             if not isinstance(raw, str) or len(raw.encode()) > 65536:
                 raise InvalidInput("model response outside budget")
             plan = validate_plan(json.loads(raw))

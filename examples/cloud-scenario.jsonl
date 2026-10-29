@@ -1,0 +1,4 @@
+{"at":0,"op":"observe","eid":"e1","modality":"text","content":"请询问杯子的位置，不要声称已经找到。"}
+{"at":0,"op":"goal","gid":"g-cloud","predicate":{"entity":"cup","attribute":"location_verified","value":true},"budget":2}
+{"at":0,"op":"model","request_id":"cloud-plan-1","scope":"g-cloud","generation":0,"input":{"goal":"g-cloud","instruction":"用一个 say 步骤询问杯子的位置。"},"evidence_ids":["e1"]}
+{"at":0,"op":"run_cloud_plan","request_id":"cloud-plan-1","skill":"cloud-check","version":1,"run_id":"cloud-run-1"}

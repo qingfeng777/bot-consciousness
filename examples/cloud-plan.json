@@ -1,0 +1,16 @@
+{
+  "scope": "demo-goal",
+  "generation": 0,
+  "input": {
+    "goal": "confirm-cup",
+    "instruction": "请生成一个询问杯子位置的文本表达步骤。先询问，不声称已经找到杯子。"
+  },
+  "goal": {
+    "id": "confirm-cup",
+    "predicate": {"entity": "cup", "attribute": "location_verified", "value": true}
+  },
+  "evidence": [
+    {"id": "user-request-1", "source": "user", "text": "请先问我杯子在哪里，再确认是否找到了。"}
+  ],
+  "evidence_ids": ["user-request-1"]
+}

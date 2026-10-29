@@ -1,4 +1,4 @@
-"""Local CLI. Nothing in this module controls real hardware or calls a model."""
+"""Local runtime CLI plus explicit cloud inference; no real hardware control."""
 import argparse
 import asyncio
 import json
@@ -26,6 +26,57 @@ def storage(directory):
 
 
 async def run(args):
+    if args.command == "prompts":
+        from .prompting import PROMPT_VERSION, SCHEMAS, prompt
+        if args.purpose:
+            content, digest = prompt(args.purpose)
+            emit({"purpose": args.purpose, "version": PROMPT_VERSION, "sha256": digest,
+                  "system_prompt": content, "schema": SCHEMAS[args.purpose]})
+        else:
+            emit({"version": PROMPT_VERSION, "purposes": sorted(SCHEMAS)})
+        return 0
+    if args.command == "cloud":
+        from .agency import Goals
+        from .cloud import CloudClient, CloudConfig, strict_json
+        from .cloud_cognition import CloudCognition
+        from .knowledge import Knowledge
+        from .state import StateStore
+        config = CloudConfig.from_env()
+        with Path(args.input).open("rb") as source:
+            raw = source.read(128 * 1024 + 1)
+        if len(raw) > 128 * 1024:
+            raise ValueError("cloud input file exceeds 128 KiB")
+        data = strict_json(raw)
+        if (not isinstance(data, dict) or "input" not in data
+                or set(data) - {"input", "goal", "evidence", "evidence_ids", "attachments", "scope", "generation"}):
+            raise ValueError("invalid cloud input document")
+        if (Path(args.data_dir) / "INCOMPLETE").exists():
+            raise ValueError("refusing incomplete backup")
+        journal_path, _ = storage(args.data_dir)
+        journal = Journal(journal_path)
+        try:
+            store = StateStore(journal)
+            knowledge = Knowledge(store)
+            evidence = data.get("evidence", [])
+            if not isinstance(evidence, list) or len(evidence) > 32:
+                raise ValueError("at most 32 input evidence records")
+            for item in evidence:
+                if not isinstance(item, dict) or set(item) != {"id", "source", "text"}:
+                    raise ValueError("input evidence requires id/source/text")
+                knowledge.evidence(item["id"], item["source"], item["text"])
+            if "goal" in data:
+                goal = data["goal"]
+                if not isinstance(goal, dict) or set(goal) != {"id", "predicate"}:
+                    raise ValueError("cloud goal requires id and predicate")
+                Goals(store, knowledge).add(goal["id"], goal["predicate"])
+            service = CloudCognition(store, CloudClient(config))
+            result = await service.infer(args.purpose, args.request_id, data["input"],
+                                         scope=data.get("scope", "cli"), generation=data.get("generation", 0),
+                                         evidence_ids=data.get("evidence_ids"), attachments=data.get("attachments"))
+            emit(result)
+            return 0 if result["status"] == "ok" else 3
+        finally:
+            journal.close()
     if args.command == "simulate":
         from .simulation import simulate
         result = await simulate(args.scenario, args.data_dir)
@@ -121,6 +172,14 @@ async def run(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="机器人认知内核 V0，仅模拟执行")
     sub = parser.add_subparsers(dest="command", required=True)
+    from .prompting import SCHEMAS
+    prompts = sub.add_parser("prompts", help="查看云端模型提示词和输出契约，不发请求")
+    prompts.add_argument("purpose", nargs="?", choices=sorted(SCHEMAS))
+    cloud = sub.add_parser("cloud", help="调用配置的云模型，保存通过校验的候选")
+    cloud.add_argument("--purpose", required=True, choices=sorted(SCHEMAS))
+    cloud.add_argument("--request-id", required=True)
+    cloud.add_argument("--input", required=True, help="JSON 上下文文件；媒体路径须显式提供")
+    cloud.add_argument("--data-dir", required=True, help="持久调用预算、候选与审计目录")
     simulation = sub.add_parser("simulate", help="在本机运行多模块认知仿真场景")
     simulation.add_argument("scenario")
     simulation.add_argument("--data-dir", help="持久化模块状态及模拟动作回执")
@@ -148,6 +207,9 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         return asyncio.run(run(args))
+    except asyncio.TimeoutError:
+        print(json.dumps({"error": "CLOUD_TIMEOUT", "detail": "cloud request deadline exceeded"}), file=sys.stderr)
+        return 2
     except (DomainError, ValueError, OSError) as exc:
         print(json.dumps({"error": getattr(exc, "code", type(exc).__name__), "detail": str(exc)},
                          ensure_ascii=False), file=sys.stderr)

@@ -21,9 +21,9 @@ Leveraging the groundbreaking advancements in large model tools in recent years 
 
 ## Implementation status
 
-Version 0.4.0 includes a bounded local simulation baseline across the 20 design modules, including temporal knowledge, conflict resolution, goals, telemetry, affect, skills and learning candidate publication. This does not complete the research acceptance criteria. The deterministic Python runtime provides text inputs,
+Version 0.5.0 includes a bounded local simulation baseline across the 20 design modules, including temporal knowledge, conflict resolution, goals, telemetry, affect, skills and learning candidate publication. This does not complete the research acceptance criteria. The deterministic Python runtime provides text inputs,
 durable events, bounded working memory, serial simulated actions, confirmed
-stopping, and restart reconciliation. No model or real robot is connected.
+stopping, and restart reconciliation. Production inference now uses a configurable cloud API with 13 versioned task prompts. Cloud credentials are required; no real robot is connected. See the [cloud guide](docs/cloud-models.md).
 
 ```sh
 python3 -m consciousness run 'hello' 'fire!'

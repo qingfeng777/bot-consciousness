@@ -17,9 +17,20 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Simulated CLI and replay
         run: |
+          python -m consciousness prompts plan
           python -m consciousness run '小智，你好' '火警'
           python -m consciousness replay examples/basic.jsonl
           python -m consciousness replay examples/preemption.jsonl --timed --stop-delay 0.1
           python -m consciousness simulate examples/cognitive.jsonl --data-dir local-data/ci
           python -m consciousness simulate examples/cognitive.jsonl --data-dir local-data/ci
           python -m consciousness simulate examples/calendar-skills.jsonl --data-dir local-data/calendar
+      - name: Build package and verify prompts
+        run: |
+          python -m pip wheel --no-deps . --wheel-dir dist
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          wheel = next(Path('dist').glob('bot_consciousness-*.whl'))
+          with ZipFile(wheel) as package:
+              assert len([p for p in package.namelist() if p.startswith('consciousness/prompts/') and p.endswith('.md')]) == 14
+          PY
