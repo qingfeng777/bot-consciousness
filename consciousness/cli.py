@@ -181,6 +181,10 @@ async def run(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="机器人认知内核 V0，仅模拟执行")
     sub = parser.add_subparsers(dest="command", required=True)
+    serve_parser = sub.add_parser("serve", help="启动本地 Web 管理台；配置就绪时同时启动语音")
+    serve_parser.add_argument("--data-dir", default="local-data/voice")
+    serve_parser.add_argument("--port", type=int, default=8765)
+    serve_parser.add_argument("--no-voice", action="store_true", help="只启动管理台，不自动监听麦克风")
     from .prompting import SCHEMAS
     voice = sub.add_parser("voice", help="Linux 麦克风与扬声器云端语音对话，Ctrl+C 停止")
     voice.add_argument("--data-dir", default="local-data/voice")
@@ -224,8 +228,15 @@ def main(argv=None):
     playback.add_argument("--timed", action="store_true", help="按虚拟时钟回放带 at 的事件")
     playback.add_argument("--duration", type=float, default=1.0)
     playback.add_argument("--stop-delay", type=float, default=0.0)
-    args = parser.parse_args(argv)
+    actual = sys.argv[1:] if argv is None else argv
+    args = parser.parse_args(actual or ["serve"])
     try:
+        if args.command == "serve":
+            from .dashboard import serve
+            if not 0 <= args.port <= 65535:
+                raise ValueError("port must be between 0 and 65535")
+            serve(args.data_dir, args.port, not args.no_voice)
+            return 0
         return asyncio.run(run(args))
     except KeyboardInterrupt:
         return 130

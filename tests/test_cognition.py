@@ -196,6 +196,12 @@ class CognitiveTests(unittest.TestCase):
         second = motives.tick(2)['goal']
         self.assertNotEqual(first, second)
         self.assertEqual(goals.evaluate(2)[second]['status'], 'active')
+        history = self.store.read('motivation')[0]['history']
+        self.assertEqual(history[first]['status'], 'resolved')
+        self.assertEqual(history[first]['resolved_at'], 1)
+        self.assertEqual(history[second]['reason'], 'low_battery')
+        self.assertEqual(history[second]['status'], 'dispatched')
+        self.assertEqual(history[first]['evidence'], ['charge-evidence-b'])
 
     def test_affect_decay_dedup_and_revoke(self):
         affect = Affect(self.store)

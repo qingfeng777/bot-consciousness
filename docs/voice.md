@@ -1,5 +1,7 @@
 # 麦克风与扬声器语音对话
 
+0.6.0 起推荐使用 `python3 -m consciousness` 同时启动 Web 管理台，界面可查看逐轮语音内容和控制收听；见 [管理台说明](dashboard.md)。以下 `voice` 为保留的独立命令。
+
 运行入口：`python3 -m consciousness voice`。本版支持 Linux ALSA；需要系统命令 `arecord` 和 `aplay`（Debian/Ubuntu 的 `alsa-utils`）。无需本地模型或 Python 音频依赖。
 
 ## 配置与启动

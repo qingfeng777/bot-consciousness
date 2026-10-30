@@ -136,3 +136,7 @@ python3 -m consciousness.benchmark --trials 100 --rate 20 --output benchmark.jso
 - 驱动必须明确声明 simulation=True；真实硬件接入在后续设备阶段开放。
 
 模块完成度和下一批工作见 [研发进度](progress.md)。
+
+## 本地管理台
+
+0.6.0 起无参数启动 `python3 -m consciousness` 会启动本地 Web 前后端，配置就绪时同时启动语音；其余子命令保持原行为。详见 [管理台说明](dashboard.md)。

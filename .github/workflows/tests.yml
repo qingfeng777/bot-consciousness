@@ -24,7 +24,7 @@ jobs:
           python -m consciousness simulate examples/cognitive.jsonl --data-dir local-data/ci
           python -m consciousness simulate examples/cognitive.jsonl --data-dir local-data/ci
           python -m consciousness simulate examples/calendar-skills.jsonl --data-dir local-data/calendar
-      - name: Build package and verify prompts
+      - name: Build package and verify resources
         run: |
           python -m pip wheel --no-deps . --wheel-dir dist
           python - <<'PY'
@@ -33,4 +33,5 @@ jobs:
           wheel = next(Path('dist').glob('bot_consciousness-*.whl'))
           with ZipFile(wheel) as package:
               assert len([p for p in package.namelist() if p.startswith('consciousness/prompts/') and p.endswith('.md')]) == 14
+              assert all("consciousness/web/" + name in package.namelist() for name in ("index.html", "app.js", "style.css"))
           PY

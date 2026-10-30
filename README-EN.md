@@ -1,6 +1,10 @@
 
 [简体中文](./README.md) | English
 
+## Local dashboard (0.6.0)
+
+Run `python3 -m consciousness` and open `http://127.0.0.1:8765/`. One process serves the bundled UI and API; voice starts automatically when configured. Use `serve --no-voice` for observation only. See the [dashboard guide](docs/dashboard.md).
+
 # Main Idea
 Robot consciousness does not emerge automatically but can be created!
 

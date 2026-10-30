@@ -1,6 +1,10 @@
 
 简体中文 | [English](./README-EN.md)
 
+## 本地管理台（0.6.0）
+
+在仓库目录运行 `python3 -m consciousness`，打开 `http://127.0.0.1:8765/`。同一命令启动 Web 前后端，展示语音对话、记忆、学习、动机、目标与事件；语音配置就绪时自动收听。仅查看数据可运行 `python3 -m consciousness serve --no-voice`。详见 [管理台使用说明](docs/dashboard.md)。
+
 # 主旨
 机器人意识不会自动出现，但可以被创造！
 

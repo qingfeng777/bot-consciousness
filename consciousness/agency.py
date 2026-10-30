@@ -223,6 +223,12 @@ class Motivation:
                 self.goals.add(current, dict(entity=current, attribute="charged", value=True), budget=3)
                 with self.store.edit("motivation", current) as state:
                     state["charge_goal"] = current
+                    history = state.setdefault("history", {})
+                    history[current] = dict(goal=current, reason="low_battery", triggered_at=at,
+                                            sample=snapshot["battery"]["sample"]["id"], status="dispatched")
+                    if len(history) > 200:
+                        for old in sorted(history, key=lambda key: history[key]["triggered_at"])[:-200]:
+                            del history[old]
             return {"status": "dispatched", "goal": current}
         if current is not None:
             sample = snapshot["battery"]["sample"]
@@ -233,6 +239,8 @@ class Motivation:
             self.goals.evaluate(at)
             with self.store.edit("motivation", "battery-recovered") as state:
                 state.pop("charge_goal", None)
+                if current in state.get("history", {}):
+                    state["history"][current].update(status="resolved", resolved_at=at, evidence=[evidence])
         return {"status": "resolved"}
 
 

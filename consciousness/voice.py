@@ -11,6 +11,7 @@ import shutil
 import ssl
 import sys
 import tempfile
+import time
 from urllib.parse import urlsplit
 import uuid
 import wave
@@ -194,11 +195,27 @@ class SpeechClient(CloudClient):
             connection.close()
 
 
+def record_turn(store, turn, **fields):
+    """Bounded conversational projection for the local management UI."""
+    with store.edit('voice', turn + '-view') as state:
+        turns = state.setdefault('conversations', {})
+        row = turns.setdefault(turn, {'id': turn, 'created': time.time(), 'status': 'thinking'})
+        row.update(fields)
+        row['updated'] = time.time()
+        if len(turns) > 200:
+            for old in sorted(turns, key=lambda key: turns[key]['created'])[:-200]:
+                del turns[old]
+
+
 async def reply(service, audio, turn):
     evidence = 'voice-' + turn
     observed = await service.infer('perception', turn + '-listen',
         {'task': '逐字理解本段用户语音，保留问题、否定和语气；听不清时请求澄清。'},
         scope='voice', evidence_ids=[evidence], attachments=[{'id': evidence, 'type': 'audio', 'path': str(audio)}])
+    if hasattr(service, 'store'):
+        heard = ('语音未能明确识别，等待澄清' if observed['status'] == 'needs_clarification' else
+                 '\n'.join(item['text'] for item in observed['data']['observations']))
+        record_turn(service.store, turn, heard=heard[:8192], observation_status=observed['status'])
     if observed['status'] == 'needs_clarification':
         return ' '.join(observed['questions'])[:2000]
     if (not observed['data']['observations'] or observed['data']['missing']
@@ -244,24 +261,36 @@ async def voice_session(args, emit):
                 emit({'voice': 'idle_timeout'})
                 return 0
             turn = uuid.uuid4().hex
-            # Capture has stopped before inference/playback: no self-listening loop.
-            with tempfile.TemporaryDirectory(prefix='bot-voice-') as tmp:
-                source, target = Path(tmp) / 'input.wav', Path(tmp) / 'reply.wav'
-                source.write_bytes(raw)
-                emit({'voice': 'thinking'})
-                text = await reply(service, source, turn)
-                with store.edit('voice', turn) as state:
-                    state['tts_attempts'] = state.get('tts_attempts', 0) + 1
-                    state['last_turn'] = {'id': turn, 'status': 'synthesis_pending'}
-                target.write_bytes(await tts.speak(text))
-                with store.edit('voice', turn + '-play') as state:
-                    state['last_turn']['status'] = 'playback_pending'
-                emit({'voice': 'speaking', 'text': text})
-                await audio.play(target)
-                with store.edit('voice', turn + '-done') as state:
-                    state['last_turn']['status'] = 'played'
-                emit({'voice': 'played'})
-                await asyncio.sleep(0.25)
+            try:
+                # Capture has stopped before inference/playback: no self-listening loop.
+                with tempfile.TemporaryDirectory(prefix='bot-voice-') as tmp:
+                    source, target = Path(tmp) / 'input.wav', Path(tmp) / 'reply.wav'
+                    source.write_bytes(raw)
+                    emit({'voice': 'thinking'})
+                    record_turn(store, turn, status='thinking')
+                    text = await reply(service, source, turn)
+                    record_turn(store, turn, reply=text, status='synthesis_pending')
+                    with store.edit('voice', turn) as state:
+                        state['tts_attempts'] = state.get('tts_attempts', 0) + 1
+                        state['last_turn'] = {'id': turn, 'status': 'synthesis_pending'}
+                    target.write_bytes(await tts.speak(text))
+                    with store.edit('voice', turn + '-play') as state:
+                        state['last_turn']['status'] = 'playback_pending'
+                    record_turn(store, turn, status='playback_pending')
+                    emit({'voice': 'speaking', 'text': text})
+                    await audio.play(target)
+                    with store.edit('voice', turn + '-done') as state:
+                        state['last_turn']['status'] = 'played'
+                    record_turn(store, turn, status='played')
+                    emit({'voice': 'played'})
+                    await asyncio.sleep(0.25)
+            except (Exception, asyncio.CancelledError) as exc:
+                try:
+                    record_turn(store, turn, status='cancelled' if isinstance(exc, asyncio.CancelledError) else 'failed',
+                                error=getattr(exc, 'code', type(exc).__name__))
+                except Exception:
+                    pass  # Preserve the original failure when storage itself is unavailable.
+                raise
         return 0
     finally:
         journal.close()
